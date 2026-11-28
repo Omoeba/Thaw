@@ -17,10 +17,11 @@ struct TerminatedItemCacheTests {
         pid: pid_t,
         sourcePID explicitSourcePID: pid_t? = nil,
         bundle: String = "com.henrikruscon.Alcove",
-        title: String = "Alcove"
+        title: String = "Alcove",
+        instance: Int = 0
     ) -> MenuBarItem {
         MenuBarItem(
-            tag: MenuBarItemTag(namespace: .string(bundle), title: title, instanceIndex: 0),
+            tag: MenuBarItemTag(namespace: .string(bundle), title: title, instanceIndex: instance),
             windowID: 1,
             ownerPID: pid,
             sourcePID: explicitSourcePID ?? (pid > 0 ? pid : nil),
@@ -107,13 +108,26 @@ struct TerminatedItemCacheTests {
     @Test("A copy of an app that quit leaves its hidden item, while another copy with an item of its own still runs",
           arguments: [MenuBarSectionName.hidden, .alwaysHidden])
     func survivingCopyDoesNotKeepItem(section: MenuBarSectionName) {
-        let survivor = item(pid: 456, title: "Alcove 2")
+        let survivor = item(pid: 456, instance: 1)
         var cache = MenuBarItemCache(displayID: nil)
         cache[section] = [item(pid: 123), survivor]
 
         let published = cache.retainingRunningOwners(processIDs: [456], bundleIdentifiers: ["com.henrikruscon.Alcove"])
 
         #expect(published[section] == [survivor])
+    }
+
+    @Test("A relaunched app keeps its other hidden items once one of them is read again",
+          arguments: [MenuBarSectionName.hidden, .alwaysHidden])
+    func relaunchedAppKeepsUnreadItems(section: MenuBarSectionName) throws {
+        let opened = item(pid: 456, title: "CPU")
+        var cache = MenuBarItemCache(displayID: nil)
+        cache[section] = [opened, item(pid: 123, title: "Memory")]
+
+        let published = cache.retainingRunningOwners(processIDs: [456], bundleIdentifiers: ["com.henrikruscon.Alcove"])
+
+        #expect(published[section].map(\.title) == ["CPU", "Memory"])
+        #expect(try #require(published[section].last).ownerPID == 0)
     }
 
     @Test("Rebucketing brings back a hidden item of a relaunched app", arguments: [MenuBarSectionName.hidden, .alwaysHidden])

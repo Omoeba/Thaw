@@ -21,11 +21,11 @@ extension MenuBarItemCache {
         processIDs: Set<pid_t>,
         bundleIdentifiers: Set<String>
     ) -> Self {
-        // A relaunched app's hidden items are all unread, so none of them has a
-        // running process. An app that has one is another copy still running.
-        let appsWithRunningItems = Set(MenuBarSectionName.allCases.flatMap { self[$0] }.compactMap { item -> String? in
+        // Another copy still running draws the same item under its own process. A relaunched
+        // app can have one item read already, opened from the Thaw Bar, while its others wait.
+        let runningCopies = Set(MenuBarSectionName.allCases.flatMap { self[$0] }.compactMap { item -> String? in
             let pid = item.sourcePID ?? item.ownerPID
-            return pid > 0 && processIDs.contains(pid) ? item.tag.namespace.bundleIdentifier : nil
+            return pid > 0 && processIDs.contains(pid) ? item.copyKey : nil
         })
         var cache = self
         for section in MenuBarSectionName.allCases {
@@ -44,7 +44,7 @@ extension MenuBarItemCache {
                 }
                 // A relaunched app draws its visible items, so the next walk
                 // reads the new process's own item in place of the old one.
-                guard section != .visible, !appsWithRunningItems.contains(bundleIdentifier) else {
+                guard section != .visible, !runningCopies.contains(item.copyKey) else {
                     return nil
                 }
                 // Persisted conceal snapshots have no PID. Dropping the exited
@@ -89,6 +89,11 @@ extension MenuBarItemCache {
 }
 
 private extension MenuBarItem {
+    /// The app and title, which another copy of the app shares under a different instance.
+    var copyKey: String {
+        "\(tag.namespace.bundleIdentifier ?? ""):\(tag.title)"
+    }
+
     /// The item as a persisted conceal snapshot carries it, owned by no process.
     var withoutOwnerProcess: MenuBarItem {
         MenuBarItem(
